@@ -26,9 +26,9 @@ class LocalChatAgent {
       `The date today is ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`
     ],
     help: [
-      "I can tell you the time and date, share jokes, have conversations, and answer basic questions! Just speak naturally.",
-      "Feel free to ask me about the time, date, request a joke, or just chat about anything on your mind!",
-      "I'm here to help! I can tell time, share jokes, and have friendly conversations. What interests you?"
+      "I can tell you the time and date, share jokes, answer trivia questions, do math, and have conversations! Just speak naturally.",
+      "Feel free to ask me about the time, date, request a joke, ask trivia questions, or just chat about anything on your mind!",
+      "I'm here to help! I can tell time, share jokes, answer questions, and have friendly conversations. What interests you?"
     ],
     goodbye: [
       "Goodbye! It was wonderful talking with you today!",
@@ -55,9 +55,9 @@ class LocalChatAgent {
       "I'm your AI voice companion! Just think of me as your helpful assistant."
     ],
     capabilities: [
-      "I can tell you the current time and date, share jokes, and have natural conversations with you!",
-      "I'm great at chatting, telling time, sharing jokes, and answering questions! I work entirely in your browser.",
-      "I can help with basic information like time and date, plus I love having conversations and telling jokes!"
+      "I can tell you the current time and date, share jokes, answer trivia questions, do math calculations, and have natural conversations with you!",
+      "I'm great at chatting, telling time, sharing jokes, answering questions, and doing basic math! I work entirely in your browser.",
+      "I can help with basic information like time and date, plus I love having conversations, telling jokes, and answering trivia!"
     ],
     how_are_you: [
       "I'm doing great, thank you for asking! How are you doing today?",
@@ -76,80 +76,149 @@ class LocalChatAgent {
     ]
   };
 
+  private async fetchTrivia(): Promise<string> {
+    try {
+      const response = await fetch('https://opentdb.com/api.php?amount=1&type=multiple');
+      const data = await response.json();
+      
+      if (data.results && data.results.length > 0) {
+        const question = data.results[0];
+        const decodedQuestion = this.decodeHtml(question.question);
+        const decodedAnswer = this.decodeHtml(question.correct_answer);
+        return `Here's a trivia question: ${decodedQuestion} The answer is: ${decodedAnswer}`;
+      }
+    } catch (error) {
+      console.error('Error fetching trivia:', error);
+    }
+    return "Here's a fun fact: Did you know that honey never spoils? Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible!";
+  }
+
+  private async fetchRandomFact(): Promise<string> {
+    try {
+      const response = await fetch('https://uselessfacts.jsph.pl/random.json?language=en');
+      const data = await response.json();
+      
+      if (data.text) {
+        return `Here's an interesting fact: ${data.text}`;
+      }
+    } catch (error) {
+      console.error('Error fetching fact:', error);
+    }
+    return "Here's a fun fact: Octopuses have three hearts and blue blood!";
+  }
+
+  private decodeHtml(html: string): string {
+    const txt = document.createElement('textarea');
+    txt.innerHTML = html;
+    return txt.value;
+  }
+
+  private evaluateMath(expression: string): string | null {
+    try {
+      // Simple math evaluation - only allow basic operations
+      const sanitized = expression.replace(/[^0-9+\-*/().\s]/g, '');
+      if (sanitized !== expression) return null;
+      
+      const result = Function('"use strict"; return (' + sanitized + ')')();
+      if (typeof result === 'number' && !isNaN(result)) {
+        return result.toString();
+      }
+    } catch (error) {
+      // Ignore math errors
+    }
+    return null;
+  }
+
   private getRandomResponse(category: string): string {
     const responses = this.responses[category] || this.responses.default;
     return responses[Math.floor(Math.random() * responses.length)];
   }
 
-  private categorizeInput(input: string): string {
+  private async categorizeAndRespond(input: string): Promise<string> {
     const lowerInput = input.toLowerCase();
+
+    // Math calculations
+    if (lowerInput.match(/\b(calculate|math|plus|minus|times|divided|equals|\+|\-|\*|\/|\d+\s*[\+\-\*\/]\s*\d+)\b/)) {
+      const mathResult = this.evaluateMath(input);
+      if (mathResult) {
+        return `The answer is ${mathResult}.`;
+      }
+      return "I can help with basic math! Try asking me something like 'what is 15 plus 27' or '100 divided by 4'.";
+    }
+
+    // Trivia questions
+    if (lowerInput.match(/\b(trivia|question|quiz|fact|interesting|random fact|tell me something)\b/)) {
+      if (lowerInput.includes('fact')) {
+        return await this.fetchRandomFact();
+      }
+      return await this.fetchTrivia();
+    }
 
     // Greetings
     if (lowerInput.match(/\b(hello|hi|hey|good morning|good afternoon|good evening|greetings)\b/)) {
-      return 'greeting';
+      return this.getRandomResponse('greeting');
     }
     
     // How are you
     if (lowerInput.match(/\b(how are you|how're you|how do you feel|how's it going)\b/)) {
-      return 'how_are_you';
+      return this.getRandomResponse('how_are_you');
     }
     
     // Weather
     if (lowerInput.match(/\b(weather|temperature|rain|sunny|cloudy|forecast|hot|cold|warm)\b/)) {
-      return 'weather';
+      return this.getRandomResponse('weather');
     }
     
     // Time
     if (lowerInput.match(/\b(time|clock|hour|minute|what time)\b/)) {
-      return 'time';
+      return this.getRandomResponse('time');
     }
     
     // Date
     if (lowerInput.match(/\b(date|today|day|month|year|what day)\b/)) {
-      return 'date';
+      return this.getRandomResponse('date');
     }
     
     // Help
     if (lowerInput.match(/\b(help|what can you|capabilities|what do you|can you do)\b/)) {
-      return 'help';
+      return this.getRandomResponse('help');
     }
     
     // Goodbye
     if (lowerInput.match(/\b(bye|goodbye|see you|farewell|talk later|later|peace)\b/)) {
-      return 'goodbye';
+      return this.getRandomResponse('goodbye');
     }
     
     // Compliments/Thanks
     if (lowerInput.match(/\b(thank|thanks|great|good|awesome|amazing|nice|cool|wonderful|fantastic)\b/)) {
-      return 'compliment';
+      return this.getRandomResponse('compliment');
     }
     
     // Jokes
     if (lowerInput.match(/\b(joke|funny|laugh|humor|amusing|tell me a joke|make me laugh)\b/)) {
-      return 'joke';
+      return this.getRandomResponse('joke');
     }
     
     // Name/Identity
     if (lowerInput.match(/\b(name|who are you|what are you|your name)\b/)) {
-      return 'name';
+      return this.getRandomResponse('name');
     }
     
     // Capabilities
     if (lowerInput.match(/\b(can you|able to|do you know|what can)\b/)) {
-      return 'capabilities';
+      return this.getRandomResponse('capabilities');
     }
 
-    return 'default';
+    return this.getRandomResponse('default');
   }
 
   async generateResponse(userInput: string): Promise<ChatResponse> {
     // Simulate a brief processing delay for more natural feel
     await new Promise(resolve => setTimeout(resolve, 200));
     
-    const category = this.categorizeInput(userInput);
-    const message = this.getRandomResponse(category);
+    const message = await this.categorizeAndRespond(userInput);
 
-    console.log(`🤖 Response category: ${category}, Message: ${message}`);
+    console.log(`🤖 Response: ${message}`);
 
     return {
       message,
