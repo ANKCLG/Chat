@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 interface UseSpeechSynthesisReturn {
   speak: (text: string) => Promise<void>;
@@ -12,25 +12,6 @@ export const useSpeechSynthesis = (): UseSpeechSynthesisReturn => {
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const isSupported = 'speechSynthesis' in window;
 
-  // Load voices when component mounts
-  useEffect(() => {
-    if (isSupported) {
-      // Load voices
-      speechSynthesis.getVoices();
-      
-      // Listen for voices changed event
-      const handleVoicesChanged = () => {
-        speechSynthesis.getVoices();
-      };
-      
-      speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged);
-      
-      return () => {
-        speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
-      };
-    }
-  }, [isSupported]);
-
   const speak = useCallback((text: string): Promise<void> => {
     return new Promise((resolve) => {
       if (!isSupported || !text.trim()) {
@@ -38,26 +19,26 @@ export const useSpeechSynthesis = (): UseSpeechSynthesisReturn => {
         return;
       }
 
-      // Stop any ongoing speech immediately
+      // Stop any current speech
       speechSynthesis.cancel();
       setIsSpeaking(false);
 
-      // Wait a moment for cancellation to complete
+      // Wait for cancellation to complete
       setTimeout(() => {
         const utterance = new SpeechSynthesisUtterance(text);
         currentUtteranceRef.current = utterance;
         
-        // Configure speech settings
-        utterance.rate = 1.1;
+        // Configure speech
+        utterance.rate = 1.0;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
-        // Try to use a good voice
+        // Get available voices
         const voices = speechSynthesis.getVoices();
         if (voices.length > 0) {
-          // Prefer English voices
+          // Find a good English voice
           const englishVoice = voices.find(voice => 
-            voice.lang.startsWith('en') && !voice.name.includes('Google')
+            voice.lang.startsWith('en') && voice.localService
           ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0];
           
           utterance.voice = englishVoice;
@@ -65,27 +46,26 @@ export const useSpeechSynthesis = (): UseSpeechSynthesisReturn => {
         }
 
         utterance.onstart = () => {
-          console.log('🔊 Speech synthesis started');
+          console.log('🔊 Speech started:', text);
           setIsSpeaking(true);
         };
 
         utterance.onend = () => {
-          console.log('🔇 Speech synthesis ended');
+          console.log('🔇 Speech ended');
           setIsSpeaking(false);
           currentUtteranceRef.current = null;
           resolve();
         };
 
         utterance.onerror = (event) => {
-          console.error('🚫 Speech synthesis error:', event.error);
+          console.error('🚫 Speech error:', event.error);
           setIsSpeaking(false);
           currentUtteranceRef.current = null;
           resolve();
         };
 
-        console.log('🔊 Speaking:', text);
         speechSynthesis.speak(utterance);
-      }, 50);
+      }, 100);
     });
   }, [isSupported]);
 
@@ -94,7 +74,7 @@ export const useSpeechSynthesis = (): UseSpeechSynthesisReturn => {
       speechSynthesis.cancel();
       setIsSpeaking(false);
       currentUtteranceRef.current = null;
-      console.log('🔇 Speech synthesis stopped');
+      console.log('🔇 Speech stopped');
     }
   }, [isSupported]);
 
