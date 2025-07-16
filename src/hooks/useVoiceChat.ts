@@ -29,6 +29,12 @@ export const useVoiceChat = () => {
   const processingRef = useRef(false);
   const lastProcessedRef = useRef('');
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isActiveRef = useRef(false);
+
+  // Keep isActiveRef in sync
+  useEffect(() => {
+    isActiveRef.current = state.isActive;
+  }, [state.isActive]);
 
   const updateStatus = useCallback((status: string, statusType: VoiceChatState['statusType']) => {
     setState(prev => ({ ...prev, status, statusType }));
@@ -43,15 +49,17 @@ export const useVoiceChat = () => {
 
   const scheduleRestart = useCallback(() => {
     clearRestartTimeout();
-    if (state.isActive && !processingRef.current && !speechSynthesis.isSpeaking) {
-      restartTimeoutRef.current = setTimeout(() => {
-        if (state.isActive && !speechRecognition.isListening && !speechSynthesis.isSpeaking && !processingRef.current) {
+    
+    if (isActiveRef.current && !processingRef.current && !speechSynthesis.isSpeaking) {
+      restartTimeoutRef.current = setTimeout(async () => {
+        if (isActiveRef.current && !speechRecognition.isListening && !speechSynthesis.isSpeaking && !processingRef.current) {
+          console.log('🔄 Restarting listening...');
           updateStatus('Listening...', 'success');
-          speechRecognition.startListening();
+          await speechRecognition.startListening();
         }
-      }, 500);
+      }, 1000);
     }
-  }, [state.isActive, speechRecognition, speechSynthesis.isSpeaking, updateStatus, clearRestartTimeout]);
+  }, [speechRecognition, speechSynthesis.isSpeaking, updateStatus, clearRestartTimeout]);
 
   const processUserInput = useCallback(async (input: string) => {
     const trimmedInput = input.trim();
@@ -62,6 +70,8 @@ export const useVoiceChat = () => {
     processingRef.current = true;
     lastProcessedRef.current = trimmedInput;
     clearRestartTimeout();
+    
+    console.log('💭 Processing input:', trimmedInput);
     
     // Stop any ongoing speech and recognition
     speechSynthesis.stop();
@@ -85,20 +95,21 @@ export const useVoiceChat = () => {
       setState(prev => ({ ...prev, isSpeaking: false }));
       
       // Schedule restart after speaking
-      if (state.isActive) {
+      if (isActiveRef.current) {
+        updateStatus('Listening...', 'success');
         scheduleRestart();
       }
     } catch (error) {
       console.error('Error processing input:', error);
       updateStatus('Error occurred', 'error');
-      if (state.isActive) {
+      if (isActiveRef.current) {
         scheduleRestart();
       }
     } finally {
       processingRef.current = false;
       speechRecognition.resetTranscript();
     }
-  }, [speechSynthesis, speechRecognition, updateStatus, state.isActive, scheduleRestart, clearRestartTimeout]);
+  }, [speechSynthesis, speechRecognition, updateStatus, scheduleRestart, clearRestartTimeout]);
 
   const startVoiceChat = useCallback(async () => {
     if (!speechRecognition.isSupported || !speechSynthesis.isSupported) {
@@ -107,6 +118,7 @@ export const useVoiceChat = () => {
     }
 
     try {
+      // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
       
       setState(prev => ({ 
@@ -118,22 +130,23 @@ export const useVoiceChat = () => {
       
       processingRef.current = false;
       lastProcessedRef.current = '';
+      clearRestartTimeout();
       
       updateStatus('Starting...', 'loading');
       
       // Start listening after a brief delay
-      setTimeout(() => {
-        if (state.isActive) {
+      setTimeout(async () => {
+        if (isActiveRef.current) {
           updateStatus('Listening...', 'success');
-          speechRecognition.startListening();
+          await speechRecognition.startListening();
         }
-      }, 300);
+      }, 500);
       
     } catch (error) {
       console.error('Microphone access error:', error);
       updateStatus('Microphone access denied', 'error');
     }
-  }, [speechRecognition, speechSynthesis, updateStatus, state.isActive]);
+  }, [speechRecognition, speechSynthesis, updateStatus, clearRestartTimeout]);
 
   const stopVoiceChat = useCallback(() => {
     clearRestartTimeout();
@@ -179,8 +192,8 @@ export const useVoiceChat = () => {
       const transcript = speechRecognition.transcript.trim();
       if (transcript && transcript !== lastProcessedRef.current) {
         processUserInput(transcript);
-      } else {
-        // Schedule restart if no valid transcript
+      } else if (transcript === '') {
+        // No transcript, schedule restart
         scheduleRestart();
       }
     }
@@ -188,8 +201,8 @@ export const useVoiceChat = () => {
 
   // Handle interruption when user speaks while assistant is talking
   useEffect(() => {
-    if (speechRecognition.transcript && speechSynthesis.isSpeaking) {
-      console.log('User interrupted, stopping speech');
+    if (speechRecognition.transcript && speechSynthesis.isSpeaking && speechRecognition.transcript.trim().length > 3) {
+      console.log('🛑 User interrupted, stopping speech');
       speechSynthesis.stop();
     }
   }, [speechRecognition.transcript, speechSynthesis.isSpeaking, speechSynthesis]);
