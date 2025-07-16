@@ -4,78 +4,115 @@ interface ChatResponse {
 }
 
 class LocalChatAgent {
-  private fallbackResponses: Record<string, string[]> = {
-    greeting: [
-      "Hello! I'm your voice assistant. How can I help you today?",
-      "Hi there! Great to hear from you. What's on your mind?",
-      "Hey! I'm here and ready to chat. What would you like to talk about?"
-    ],
-    time: [
-      `It's currently ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-      `The time right now is ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
-    ],
-    date: [
-      `Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`,
-      `It's ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} today.`
-    ],
-    default: [
-      "That's an interesting question! Let me think about that.",
-      "I understand what you're asking. Let me help you with that.",
-      "Good question! Here's what I think about that."
-    ]
-  };
+  private conversationHistory: Array<{user: string, assistant: string}> = [];
 
-  private async tryHuggingFaceAPI(userInput: string): Promise<string | null> {
+  private async tryFreeGPTAPI(userInput: string): Promise<string | null> {
     try {
-      // Using Hugging Face's free inference API with a conversational model
-      const response = await fetch('https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium', {
+      // Using a free GPT API that doesn't require authentication
+      const response = await fetch('https://api.freegpt.one/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          inputs: userInput,
-          parameters: {
-            max_length: 100,
-            temperature: 0.7,
-            do_sample: true
-          }
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful voice assistant. Give concise, friendly responses in 1-2 sentences. Be conversational and natural.'
+            },
+            {
+              role: 'user',
+              content: userInput
+            }
+          ],
+          max_tokens: 150,
+          temperature: 0.7
         })
       });
 
       if (response.ok) {
         const data = await response.json();
-        if (data && data[0] && data[0].generated_text) {
-          let generatedText = data[0].generated_text;
-          // Clean up the response - remove the input text if it's repeated
-          if (generatedText.includes(userInput)) {
-            generatedText = generatedText.replace(userInput, '').trim();
-          }
-          if (generatedText.length > 5) {
-            return generatedText;
-          }
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+          return data.choices[0].message.content.trim();
         }
       }
     } catch (error) {
-      console.log('Hugging Face API not available:', error);
+      console.log('FreeGPT API not available:', error);
     }
     return null;
   }
 
-  private async tryOpenAICompatibleAPI(userInput: string): Promise<string | null> {
+  private async tryPizzaGPTAPI(userInput: string): Promise<string | null> {
     try {
-      // Try a free OpenAI-compatible API
-      const response = await fetch('https://api.deepinfra.com/v1/openai/chat/completions', {
+      // Using PizzaGPT - a free ChatGPT alternative
+      const response = await fetch('https://api.pizzagpt.it/ask', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'meta-llama/Llama-2-7b-chat-hf',
+          question: userInput
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.answer) {
+          return data.answer.trim();
+        }
+      }
+    } catch (error) {
+      console.log('PizzaGPT API not available:', error);
+    }
+    return null;
+  }
+
+  private async tryOpenAIProxyAPI(userInput: string): Promise<string | null> {
+    try {
+      // Using a free OpenAI proxy
+      const response = await fetch('https://chatgpt-api.shn.hk/v1/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'user',
+              content: userInput
+            }
+          ]
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+          return data.choices[0].message.content.trim();
+        }
+      }
+    } catch (error) {
+      console.log('OpenAI Proxy API not available:', error);
+    }
+    return null;
+  }
+
+  private async tryLocalLLMAPI(userInput: string): Promise<string | null> {
+    try {
+      // Using a free local LLM API
+      const response = await fetch('https://api.naga.ac/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
-              content: 'You are a helpful voice assistant. Give concise, friendly responses in 1-2 sentences. Be conversational and natural.'
+              content: 'You are a helpful voice assistant. Give concise, friendly responses in 1-2 sentences.'
             },
             {
               role: 'user',
@@ -94,62 +131,58 @@ class LocalChatAgent {
         }
       }
     } catch (error) {
-      console.log('DeepInfra API not available:', error);
-    }
-    return null;
-  }
-
-  private async tryCohereFreeAPI(userInput: string): Promise<string | null> {
-    try {
-      // Try Cohere's free tier (no key needed for basic usage)
-      const response = await fetch('https://api.cohere.ai/v1/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'command-light',
-          prompt: `Human: ${userInput}\nAssistant: `,
-          max_tokens: 100,
-          temperature: 0.7,
-          stop_sequences: ['Human:', 'Assistant:']
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.generations && data.generations[0]) {
-          return data.generations[0].text.trim();
-        }
-      }
-    } catch (error) {
-      console.log('Cohere API not available:', error);
+      console.log('Local LLM API not available:', error);
     }
     return null;
   }
 
   private evaluateMath(expression: string): string | null {
     try {
-      // Enhanced math evaluation
-      const mathPattern = /(?:what\s+is\s+|calculate\s+|compute\s+)?(\d+(?:\.\d+)?)\s*([\+\-\*\/])\s*(\d+(?:\.\d+)?)/i;
-      const match = expression.match(mathPattern);
+      // Enhanced math evaluation with more patterns
+      const patterns = [
+        /(?:what\s+is\s+|calculate\s+|compute\s+)?(\d+(?:\.\d+)?)\s*([\+\-\*\/×÷])\s*(\d+(?:\.\d+)?)/i,
+        /(\d+(?:\.\d+)?)\s*(?:plus|add)\s*(\d+(?:\.\d+)?)/i,
+        /(\d+(?:\.\d+)?)\s*(?:minus|subtract)\s*(\d+(?:\.\d+)?)/i,
+        /(\d+(?:\.\d+)?)\s*(?:times|multiply|multiplied\s+by)\s*(\d+(?:\.\d+)?)/i,
+        /(\d+(?:\.\d+)?)\s*(?:divided\s+by|divide)\s*(\d+(?:\.\d+)?)/i
+      ];
       
-      if (match) {
-        const num1 = parseFloat(match[1]);
-        const operator = match[2];
-        const num2 = parseFloat(match[3]);
-        
-        let result;
-        switch (operator) {
-          case '+': result = num1 + num2; break;
-          case '-': result = num1 - num2; break;
-          case '*': result = num1 * num2; break;
-          case '/': result = num2 !== 0 ? num1 / num2 : null; break;
-          default: return null;
-        }
-        
-        if (result !== null && !isNaN(result)) {
-          return `${num1} ${operator} ${num2} equals ${result}`;
+      for (const pattern of patterns) {
+        const match = expression.match(pattern);
+        if (match) {
+          let num1, num2, operator;
+          
+          if (match.length === 4) {
+            // Pattern with operator symbol
+            num1 = parseFloat(match[1]);
+            operator = match[2];
+            num2 = parseFloat(match[3]);
+          } else {
+            // Word-based patterns
+            num1 = parseFloat(match[1]);
+            num2 = parseFloat(match[2]);
+            
+            if (expression.includes('plus') || expression.includes('add')) operator = '+';
+            else if (expression.includes('minus') || expression.includes('subtract')) operator = '-';
+            else if (expression.includes('times') || expression.includes('multiply')) operator = '*';
+            else if (expression.includes('divided') || expression.includes('divide')) operator = '/';
+          }
+          
+          let result;
+          switch (operator) {
+            case '+': result = num1 + num2; break;
+            case '-': result = num1 - num2; break;
+            case '*': case '×': result = num1 * num2; break;
+            case '/': case '÷': result = num2 !== 0 ? num1 / num2 : null; break;
+            default: continue;
+          }
+          
+          if (result !== null && !isNaN(result)) {
+            const operatorWord = operator === '+' ? 'plus' : 
+                               operator === '-' ? 'minus' : 
+                               operator === '*' || operator === '×' ? 'times' : 'divided by';
+            return `${num1} ${operatorWord} ${num2} equals ${result}`;
+          }
         }
       }
     } catch (error) {
@@ -162,11 +195,18 @@ class LocalChatAgent {
     const lowerInput = input.toLowerCase();
     
     if (lowerInput.includes('time')) {
-      return `It's currently ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `It's currently ${time}.`;
     }
     
     if (lowerInput.includes('date') || lowerInput.includes('today') || lowerInput.includes('day')) {
-      return `Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
+      const date = new Date().toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      return `Today is ${date}.`;
     }
     
     return null;
@@ -174,7 +214,7 @@ class LocalChatAgent {
 
   private async fetchTrivia(): Promise<string> {
     try {
-      const response = await fetch('https://opentdb.com/api.php?amount=1&type=multiple');
+      const response = await fetch('https://opentdb.com/api.php?amount=1&type=multiple&difficulty=easy');
       const data = await response.json();
       
       if (data.results && data.results.length > 0) {
@@ -186,7 +226,21 @@ class LocalChatAgent {
     } catch (error) {
       console.error('Error fetching trivia:', error);
     }
-    return "Here's a fun fact: Did you know that honey never spoils? Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old!";
+    return "Here's a fun fact: Did you know that octopuses have three hearts and blue blood?";
+  }
+
+  private async fetchRandomFact(): Promise<string> {
+    try {
+      const response = await fetch('https://uselessfacts.jsph.pl/random.json?language=en');
+      const data = await response.json();
+      
+      if (data.text) {
+        return `Here's an interesting fact: ${data.text}`;
+      }
+    } catch (error) {
+      console.error('Error fetching random fact:', error);
+    }
+    return "Here's a fun fact: Bananas are berries, but strawberries aren't!";
   }
 
   private decodeHtml(html: string): string {
@@ -195,9 +249,42 @@ class LocalChatAgent {
     return txt.value;
   }
 
-  private getRandomResponse(category: string): string {
-    const responses = this.fallbackResponses[category] || this.fallbackResponses.default;
-    return responses[Math.floor(Math.random() * responses.length)];
+  private getIntelligentFallback(userInput: string): string {
+    const lowerInput = userInput.toLowerCase();
+    
+    // Greeting responses
+    if (lowerInput.includes('hello') || lowerInput.includes('hi') || lowerInput.includes('hey')) {
+      const greetings = [
+        "Hello! I'm your voice assistant. How can I help you today?",
+        "Hi there! What would you like to talk about?",
+        "Hey! I'm here and ready to chat. What's on your mind?"
+      ];
+      return greetings[Math.floor(Math.random() * greetings.length)];
+    }
+    
+    // Name/identity questions
+    if (lowerInput.includes('name') || lowerInput.includes('who are you')) {
+      return "I'm your AI voice assistant! I'm here to help answer questions and have conversations with you.";
+    }
+    
+    // Voice recognition questions
+    if (lowerInput.includes('voice') || lowerInput.includes('recognize') || lowerInput.includes('remember')) {
+      return "I can hear and understand your voice, but I don't store personal information between conversations. Each chat is fresh!";
+    }
+    
+    // Capability questions
+    if (lowerInput.includes('can you') || lowerInput.includes('what can') || lowerInput.includes('help')) {
+      return "I can help with math calculations, tell you the time and date, share trivia and facts, and have conversations about various topics!";
+    }
+    
+    // Questions (contain question words)
+    if (lowerInput.includes('what') || lowerInput.includes('how') || lowerInput.includes('why') || 
+        lowerInput.includes('when') || lowerInput.includes('where') || lowerInput.includes('?')) {
+      return `That's a great question about "${userInput}". While I don't have specific information about that right now, I'd be happy to help you explore related topics or answer other questions!`;
+    }
+    
+    // Default conversational response
+    return `I hear you talking about "${userInput}". That's interesting! What would you like to know more about?`;
   }
 
   async generateResponse(userInput: string): Promise<ChatResponse> {
@@ -224,36 +311,41 @@ class LocalChatAgent {
       return { message: triviaResponse };
     }
 
+    // Random facts
+    if (userInput.toLowerCase().includes('fact') || userInput.toLowerCase().includes('interesting')) {
+      const factResponse = await this.fetchRandomFact();
+      console.log(`📚 Fact response: ${factResponse}`);
+      return { message: factResponse };
+    }
+
     // Try AI APIs for dynamic responses
     console.log('🤖 Trying AI APIs for dynamic response...');
     
-    let aiResponse = await this.tryHuggingFaceAPI(userInput);
+    let aiResponse = await this.tryFreeGPTAPI(userInput);
     if (!aiResponse) {
-      aiResponse = await this.tryOpenAICompatibleAPI(userInput);
+      aiResponse = await this.tryPizzaGPTAPI(userInput);
     }
     if (!aiResponse) {
-      aiResponse = await this.tryCohereFreeAPI(userInput);
+      aiResponse = await this.tryOpenAIProxyAPI(userInput);
+    }
+    if (!aiResponse) {
+      aiResponse = await this.tryLocalLLMAPI(userInput);
     }
 
     if (aiResponse && aiResponse.length > 5) {
       console.log(`🎯 AI response: ${aiResponse}`);
+      // Store in conversation history
+      this.conversationHistory.push({
+        user: userInput,
+        assistant: aiResponse
+      });
       return { message: aiResponse };
     }
 
-    // Fallback to contextual responses
-    console.log('📝 Using fallback response');
-    const lowerInput = userInput.toLowerCase();
-    
-    if (lowerInput.includes('hello') || lowerInput.includes('hi')) {
-      return { message: this.getRandomResponse('greeting') };
-    }
-    
-    // Enhanced fallback that tries to be more contextual
-    if (lowerInput.includes('?')) {
-      return { message: `That's a great question about "${userInput}". While I don't have specific information about that right now, I'd love to help you explore it further. What specifically interests you about this topic?` };
-    }
-    
-    return { message: `I hear you talking about "${userInput}". That sounds interesting! Can you tell me more about what you'd like to know or discuss about this?` };
+    // Intelligent fallback responses
+    console.log('📝 Using intelligent fallback response');
+    const fallbackResponse = this.getIntelligentFallback(userInput);
+    return { message: fallbackResponse };
   }
 }
 
