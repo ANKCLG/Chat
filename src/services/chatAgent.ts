@@ -4,77 +4,173 @@ interface ChatResponse {
 }
 
 class LocalChatAgent {
-  private responses: Record<string, string[]> = {
+  private fallbackResponses: Record<string, string[]> = {
     greeting: [
       "Hello! I'm your voice assistant. How can I help you today?",
       "Hi there! Great to hear from you. What's on your mind?",
       "Hey! I'm here and ready to chat. What would you like to talk about?"
     ],
-    weather: [
-      "I can't check the weather right now, but I hope it's beautiful outside! You might want to check your weather app.",
-      "Sorry, I don't have access to weather data. Try asking your phone or checking a weather website!",
-      "I wish I could tell you about the weather, but that's beyond my current abilities. Hope it's nice out there!"
-    ],
     time: [
       `It's currently ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-      `The time right now is ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-      `According to my clock, it's ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+      `The time right now is ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
     ],
     date: [
       `Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`,
-      `It's ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} today.`,
-      `The date today is ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`
-    ],
-    help: [
-      "I can tell you the time and date, share jokes, answer trivia questions, do math, and have conversations! Just speak naturally.",
-      "Feel free to ask me about the time, date, request a joke, ask trivia questions, or just chat about anything on your mind!",
-      "I'm here to help! I can tell time, share jokes, answer questions, and have friendly conversations. What interests you?"
-    ],
-    goodbye: [
-      "Goodbye! It was wonderful talking with you today!",
-      "See you later! Thanks for the great conversation!",
-      "Bye! Have an amazing rest of your day!"
-    ],
-    compliment: [
-      "Thank you so much! You're very kind to say that.",
-      "That's really nice of you! I appreciate the kind words.",
-      "Thanks! You're pretty awesome yourself. I enjoy our chat!"
-    ],
-    joke: [
-      "Why don't scientists trust atoms? Because they make up everything!",
-      "I told my wife she was drawing her eyebrows too high. She looked surprised!",
-      "Why did the scarecrow win an award? He was outstanding in his field!",
-      "What do you call a fake noodle? An impasta!",
-      "Why don't eggs tell jokes? They'd crack each other up!",
-      "What do you call a bear with no teeth? A gummy bear!",
-      "Why did the math book look so sad? Because it was full of problems!"
-    ],
-    name: [
-      "I'm your friendly voice assistant! You can just call me Assistant.",
-      "I'm a voice chat assistant created to help and chat with you! No special name needed.",
-      "I'm your AI voice companion! Just think of me as your helpful assistant."
-    ],
-    capabilities: [
-      "I can tell you the current time and date, share jokes, answer trivia questions, do math calculations, and have natural conversations with you!",
-      "I'm great at chatting, telling time, sharing jokes, answering questions, and doing basic math! I work entirely in your browser.",
-      "I can help with basic information like time and date, plus I love having conversations, telling jokes, and answering trivia!"
-    ],
-    how_are_you: [
-      "I'm doing great, thank you for asking! How are you doing today?",
-      "I'm wonderful! It's always nice to chat with someone. How about you?",
-      "I'm doing fantastic! Thanks for asking. What's new with you?"
+      `It's ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} today.`
     ],
     default: [
-      "That's really interesting! Tell me more about that.",
-      "I see! What else would you like to talk about?",
-      "That's a good point! Please continue.",
-      "Interesting! What's your take on that?",
-      "Tell me more about what you're thinking.",
-      "That sounds fascinating! Go on.",
-      "I'd love to hear more about that topic!",
-      "That's quite thoughtful. What made you think of that?"
+      "That's an interesting question! Let me think about that.",
+      "I understand what you're asking. Let me help you with that.",
+      "Good question! Here's what I think about that."
     ]
   };
+
+  private async tryHuggingFaceAPI(userInput: string): Promise<string | null> {
+    try {
+      // Using Hugging Face's free inference API with a conversational model
+      const response = await fetch('https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          inputs: userInput,
+          parameters: {
+            max_length: 100,
+            temperature: 0.7,
+            do_sample: true
+          }
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data[0] && data[0].generated_text) {
+          let generatedText = data[0].generated_text;
+          // Clean up the response - remove the input text if it's repeated
+          if (generatedText.includes(userInput)) {
+            generatedText = generatedText.replace(userInput, '').trim();
+          }
+          if (generatedText.length > 5) {
+            return generatedText;
+          }
+        }
+      }
+    } catch (error) {
+      console.log('Hugging Face API not available:', error);
+    }
+    return null;
+  }
+
+  private async tryOpenAICompatibleAPI(userInput: string): Promise<string | null> {
+    try {
+      // Try a free OpenAI-compatible API
+      const response = await fetch('https://api.deepinfra.com/v1/openai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/Llama-2-7b-chat-hf',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful voice assistant. Give concise, friendly responses in 1-2 sentences. Be conversational and natural.'
+            },
+            {
+              role: 'user',
+              content: userInput
+            }
+          ],
+          max_tokens: 100,
+          temperature: 0.7
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+          return data.choices[0].message.content.trim();
+        }
+      }
+    } catch (error) {
+      console.log('DeepInfra API not available:', error);
+    }
+    return null;
+  }
+
+  private async tryCohereFreeAPI(userInput: string): Promise<string | null> {
+    try {
+      // Try Cohere's free tier (no key needed for basic usage)
+      const response = await fetch('https://api.cohere.ai/v1/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'command-light',
+          prompt: `Human: ${userInput}\nAssistant: `,
+          max_tokens: 100,
+          temperature: 0.7,
+          stop_sequences: ['Human:', 'Assistant:']
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.generations && data.generations[0]) {
+          return data.generations[0].text.trim();
+        }
+      }
+    } catch (error) {
+      console.log('Cohere API not available:', error);
+    }
+    return null;
+  }
+
+  private evaluateMath(expression: string): string | null {
+    try {
+      // Enhanced math evaluation
+      const mathPattern = /(?:what\s+is\s+|calculate\s+|compute\s+)?(\d+(?:\.\d+)?)\s*([\+\-\*\/])\s*(\d+(?:\.\d+)?)/i;
+      const match = expression.match(mathPattern);
+      
+      if (match) {
+        const num1 = parseFloat(match[1]);
+        const operator = match[2];
+        const num2 = parseFloat(match[3]);
+        
+        let result;
+        switch (operator) {
+          case '+': result = num1 + num2; break;
+          case '-': result = num1 - num2; break;
+          case '*': result = num1 * num2; break;
+          case '/': result = num2 !== 0 ? num1 / num2 : null; break;
+          default: return null;
+        }
+        
+        if (result !== null && !isNaN(result)) {
+          return `${num1} ${operator} ${num2} equals ${result}`;
+        }
+      }
+    } catch (error) {
+      console.log('Math evaluation error:', error);
+    }
+    return null;
+  }
+
+  private async getTimeOrDate(input: string): Promise<string | null> {
+    const lowerInput = input.toLowerCase();
+    
+    if (lowerInput.includes('time')) {
+      return `It's currently ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+    }
+    
+    if (lowerInput.includes('date') || lowerInput.includes('today') || lowerInput.includes('day')) {
+      return `Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
+    }
+    
+    return null;
+  }
 
   private async fetchTrivia(): Promise<string> {
     try {
@@ -90,21 +186,7 @@ class LocalChatAgent {
     } catch (error) {
       console.error('Error fetching trivia:', error);
     }
-    return "Here's a fun fact: Did you know that honey never spoils? Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible!";
-  }
-
-  private async fetchRandomFact(): Promise<string> {
-    try {
-      const response = await fetch('https://uselessfacts.jsph.pl/random.json?language=en');
-      const data = await response.json();
-      
-      if (data.text) {
-        return `Here's an interesting fact: ${data.text}`;
-      }
-    } catch (error) {
-      console.error('Error fetching fact:', error);
-    }
-    return "Here's a fun fact: Octopuses have three hearts and blue blood!";
+    return "Here's a fun fact: Did you know that honey never spoils? Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old!";
   }
 
   private decodeHtml(html: string): string {
@@ -113,117 +195,65 @@ class LocalChatAgent {
     return txt.value;
   }
 
-  private evaluateMath(expression: string): string | null {
-    try {
-      // Simple math evaluation - only allow basic operations
-      const sanitized = expression.replace(/[^0-9+\-*/().\s]/g, '');
-      if (sanitized !== expression) return null;
-      
-      const result = Function('"use strict"; return (' + sanitized + ')')();
-      if (typeof result === 'number' && !isNaN(result)) {
-        return result.toString();
-      }
-    } catch (error) {
-      // Ignore math errors
-    }
-    return null;
-  }
-
   private getRandomResponse(category: string): string {
-    const responses = this.responses[category] || this.responses.default;
+    const responses = this.fallbackResponses[category] || this.fallbackResponses.default;
     return responses[Math.floor(Math.random() * responses.length)];
   }
 
-  private async categorizeAndRespond(input: string): Promise<string> {
-    const lowerInput = input.toLowerCase();
+  async generateResponse(userInput: string): Promise<ChatResponse> {
+    console.log(`🎯 Processing: "${userInput}"`);
+    
+    // Quick local responses for time/date
+    const timeOrDate = await this.getTimeOrDate(userInput);
+    if (timeOrDate) {
+      console.log(`⏰ Time/Date response: ${timeOrDate}`);
+      return { message: timeOrDate };
+    }
 
     // Math calculations
-    if (lowerInput.match(/\b(calculate|math|plus|minus|times|divided|equals|\+|\-|\*|\/|\d+\s*[\+\-\*\/]\s*\d+)\b/)) {
-      const mathResult = this.evaluateMath(input);
-      if (mathResult) {
-        return `The answer is ${mathResult}.`;
-      }
-      return "I can help with basic math! Try asking me something like 'what is 15 plus 27' or '100 divided by 4'.";
+    const mathResult = this.evaluateMath(userInput);
+    if (mathResult) {
+      console.log(`🔢 Math response: ${mathResult}`);
+      return { message: mathResult };
     }
 
-    // Trivia questions
-    if (lowerInput.match(/\b(trivia|question|quiz|fact|interesting|random fact|tell me something)\b/)) {
-      if (lowerInput.includes('fact')) {
-        return await this.fetchRandomFact();
-      }
-      return await this.fetchTrivia();
+    // Trivia requests
+    if (userInput.toLowerCase().includes('trivia') || userInput.toLowerCase().includes('question')) {
+      const triviaResponse = await this.fetchTrivia();
+      console.log(`🧠 Trivia response: ${triviaResponse}`);
+      return { message: triviaResponse };
     }
 
-    // Greetings
-    if (lowerInput.match(/\b(hello|hi|hey|good morning|good afternoon|good evening|greetings)\b/)) {
-      return this.getRandomResponse('greeting');
-    }
+    // Try AI APIs for dynamic responses
+    console.log('🤖 Trying AI APIs for dynamic response...');
     
-    // How are you
-    if (lowerInput.match(/\b(how are you|how're you|how do you feel|how's it going)\b/)) {
-      return this.getRandomResponse('how_are_you');
+    let aiResponse = await this.tryHuggingFaceAPI(userInput);
+    if (!aiResponse) {
+      aiResponse = await this.tryOpenAICompatibleAPI(userInput);
     }
-    
-    // Weather
-    if (lowerInput.match(/\b(weather|temperature|rain|sunny|cloudy|forecast|hot|cold|warm)\b/)) {
-      return this.getRandomResponse('weather');
-    }
-    
-    // Time
-    if (lowerInput.match(/\b(time|clock|hour|minute|what time)\b/)) {
-      return this.getRandomResponse('time');
-    }
-    
-    // Date
-    if (lowerInput.match(/\b(date|today|day|month|year|what day)\b/)) {
-      return this.getRandomResponse('date');
-    }
-    
-    // Help
-    if (lowerInput.match(/\b(help|what can you|capabilities|what do you|can you do)\b/)) {
-      return this.getRandomResponse('help');
-    }
-    
-    // Goodbye
-    if (lowerInput.match(/\b(bye|goodbye|see you|farewell|talk later|later|peace)\b/)) {
-      return this.getRandomResponse('goodbye');
-    }
-    
-    // Compliments/Thanks
-    if (lowerInput.match(/\b(thank|thanks|great|good|awesome|amazing|nice|cool|wonderful|fantastic)\b/)) {
-      return this.getRandomResponse('compliment');
-    }
-    
-    // Jokes
-    if (lowerInput.match(/\b(joke|funny|laugh|humor|amusing|tell me a joke|make me laugh)\b/)) {
-      return this.getRandomResponse('joke');
-    }
-    
-    // Name/Identity
-    if (lowerInput.match(/\b(name|who are you|what are you|your name)\b/)) {
-      return this.getRandomResponse('name');
-    }
-    
-    // Capabilities
-    if (lowerInput.match(/\b(can you|able to|do you know|what can)\b/)) {
-      return this.getRandomResponse('capabilities');
+    if (!aiResponse) {
+      aiResponse = await this.tryCohereFreeAPI(userInput);
     }
 
-    return this.getRandomResponse('default');
-  }
+    if (aiResponse && aiResponse.length > 5) {
+      console.log(`🎯 AI response: ${aiResponse}`);
+      return { message: aiResponse };
+    }
 
-  async generateResponse(userInput: string): Promise<ChatResponse> {
-    // Simulate a brief processing delay for more natural feel
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // Fallback to contextual responses
+    console.log('📝 Using fallback response');
+    const lowerInput = userInput.toLowerCase();
     
-    const message = await this.categorizeAndRespond(userInput);
-
-    console.log(`🤖 Response: ${message}`);
-
-    return {
-      message,
-      delay: 0
-    };
+    if (lowerInput.includes('hello') || lowerInput.includes('hi')) {
+      return { message: this.getRandomResponse('greeting') };
+    }
+    
+    // Enhanced fallback that tries to be more contextual
+    if (lowerInput.includes('?')) {
+      return { message: `That's a great question about "${userInput}". While I don't have specific information about that right now, I'd love to help you explore it further. What specifically interests you about this topic?` };
+    }
+    
+    return { message: `I hear you talking about "${userInput}". That sounds interesting! Can you tell me more about what you'd like to know or discuss about this?` };
   }
 }
 
