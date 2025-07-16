@@ -21,12 +21,12 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
   const [transcript, setTranscript] = useState('');
   const [confidence, setConfidence] = useState(0);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const isStartingRef = useRef(false);
+  const isInitializedRef = useRef(false);
 
   const isSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
 
   const initializeRecognition = useCallback(() => {
-    if (!isSupported) return null;
+    if (!isSupported || isInitializedRef.current) return recognitionRef.current;
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
@@ -39,7 +39,6 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
     recognition.onstart = () => {
       console.log('Speech recognition started');
       setIsListening(true);
-      isStartingRef.current = false;
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -63,50 +62,54 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
-      isStartingRef.current = false;
+      
+      // Don't treat no-speech as a critical error
+      if (event.error === 'no-speech') {
+        console.log('No speech detected, will retry...');
+      }
     };
 
     recognition.onend = () => {
       console.log('Speech recognition ended');
       setIsListening(false);
-      isStartingRef.current = false;
     };
 
+    recognitionRef.current = recognition;
+    isInitializedRef.current = true;
     return recognition;
   }, [isSupported]);
 
   const startListening = useCallback(() => {
-    if (!isSupported || isStartingRef.current) return;
+    if (!isSupported) {
+      console.warn('Speech recognition not supported');
+      return;
+    }
 
-    // If already listening, don't start again
+    // Don't start if already listening
     if (isListening) {
       console.log('Already listening, skipping start');
       return;
     }
 
-    if (!recognitionRef.current) {
-      recognitionRef.current = initializeRecognition();
-    }
+    const recognition = recognitionRef.current || initializeRecognition();
+    if (!recognition) return;
 
-    if (recognitionRef.current) {
-      try {
-        isStartingRef.current = true;
-        recognitionRef.current.start();
-        console.log('Starting speech recognition...');
-      } catch (error) {
-        console.error('Error starting recognition:', error);
-        isStartingRef.current = false;
-        
-        // If it's already started, just update our state
-        if (error.name === 'InvalidStateError') {
-          setIsListening(true);
-        }
+    try {
+      recognition.start();
+      console.log('Starting speech recognition...');
+    } catch (error) {
+      console.error('Error starting recognition:', error);
+      
+      // Handle the case where recognition is already started
+      if (error.name === 'InvalidStateError') {
+        console.log('Recognition already started, updating state');
+        setIsListening(true);
       }
     }
   }, [isSupported, isListening, initializeRecognition]);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current && (isListening || isStartingRef.current)) {
+    if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
         console.log('Stopping speech recognition...');
@@ -114,8 +117,8 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
         console.error('Error stopping recognition:', error);
       }
     }
-    isStartingRef.current = false;
-  }, [isListening]);
+    setIsListening(false);
+  }, []);
 
   const resetTranscript = useCallback(() => {
     setTranscript('');
@@ -125,9 +128,12 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (error) {
+          // Ignore cleanup errors
+        }
       }
-      isStartingRef.current = false;
     };
   }, []);
 

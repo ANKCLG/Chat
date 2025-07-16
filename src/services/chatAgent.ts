@@ -6,50 +6,65 @@ interface ChatResponse {
 class LocalChatAgent {
   private responses: Record<string, string[]> = {
     greeting: [
-      "Hello! How can I help you?",
-      "Hi there! What's up?",
-      "Hey! What can I do for you?"
+      "Hello! How can I help you today?",
+      "Hi there! What's on your mind?",
+      "Hey! Great to chat with you!"
     ],
     weather: [
-      "I can't check weather, but I hope it's nice!",
-      "No weather access, sorry!",
-      "Try a weather app for that info."
+      "I can't check the weather right now, but I hope it's beautiful outside!",
+      "Sorry, I don't have weather access. Try checking your weather app!",
+      "I wish I could tell you about the weather, but that's beyond my current abilities."
     ],
     time: [
-      `It's ${new Date().toLocaleTimeString()}.`,
-      `The time is ${new Date().toLocaleTimeString()}.`
+      `It's currently ${new Date().toLocaleTimeString()}.`,
+      `The time right now is ${new Date().toLocaleTimeString()}.`,
+      `According to my clock, it's ${new Date().toLocaleTimeString()}.`
     ],
     date: [
       `Today is ${new Date().toLocaleDateString()}.`,
-      `It's ${new Date().toLocaleDateString()}.`
+      `It's ${new Date().toLocaleDateString()} today.`,
+      `The date today is ${new Date().toLocaleDateString()}.`
     ],
     help: [
-      "I can chat about time, date, or anything else!",
-      "Just talk to me about whatever you want!",
-      "Ask me questions or just have a chat!"
+      "I can chat about time, date, tell jokes, or just have a conversation with you!",
+      "Feel free to ask me about the time, date, or just talk about anything!",
+      "I'm here to chat! Ask me questions or tell me what's on your mind."
     ],
     goodbye: [
-      "Goodbye! Take care!",
-      "See you later!",
-      "Bye! Have a great day!"
+      "Goodbye! It was great talking with you!",
+      "See you later! Have an amazing day!",
+      "Bye! Thanks for the chat!"
     ],
     compliment: [
-      "Thank you! You're kind.",
-      "That's nice of you to say!",
-      "Thanks! You're great too."
+      "Thank you so much! You're very kind.",
+      "That's really nice of you to say!",
+      "Thanks! You're pretty awesome yourself."
     ],
     joke: [
-      "Why don't scientists trust atoms? They make up everything!",
-      "I told my wife her eyebrows were too high. She looked surprised.",
-      "Why did the scarecrow win? He was outstanding in his field!"
+      "Why don't scientists trust atoms? Because they make up everything!",
+      "I told my wife she was drawing her eyebrows too high. She looked surprised!",
+      "Why did the scarecrow win an award? He was outstanding in his field!",
+      "What do you call a fake noodle? An impasta!",
+      "Why don't eggs tell jokes? They'd crack each other up!"
+    ],
+    name: [
+      "I'm your voice assistant! You can just call me Assistant.",
+      "I'm a voice chat assistant created to help and chat with you!",
+      "I'm your friendly AI voice assistant!"
+    ],
+    capabilities: [
+      "I can tell you the time and date, share jokes, and have conversations with you!",
+      "I'm great at chatting, telling the time, sharing jokes, and answering questions!",
+      "I can help with basic information like time and date, plus I love to chat!"
     ],
     default: [
-      "That's interesting! Tell me more.",
-      "I see. What else?",
-      "Good point! Continue.",
-      "Interesting. Go on.",
-      "Tell me more about that.",
-      "That's cool! What else?"
+      "That's really interesting! Tell me more about that.",
+      "I see! What else would you like to talk about?",
+      "That's a good point! Continue.",
+      "Interesting! What's your take on that?",
+      "Tell me more about what you're thinking.",
+      "That sounds fascinating! Go on.",
+      "I'd love to hear more about that!"
     ]
   };
 
@@ -61,36 +76,63 @@ class LocalChatAgent {
   private categorizeInput(input: string): string {
     const lowerInput = input.toLowerCase();
 
-    if (lowerInput.includes('hello') || lowerInput.includes('hi') || lowerInput.includes('hey')) {
+    // Greetings
+    if (lowerInput.match(/\b(hello|hi|hey|good morning|good afternoon|good evening)\b/)) {
       return 'greeting';
     }
-    if (lowerInput.includes('weather') || lowerInput.includes('temperature')) {
+    
+    // Weather
+    if (lowerInput.match(/\b(weather|temperature|rain|sunny|cloudy|forecast)\b/)) {
       return 'weather';
     }
-    if (lowerInput.includes('time') || lowerInput.includes('clock')) {
+    
+    // Time
+    if (lowerInput.match(/\b(time|clock|hour|minute)\b/)) {
       return 'time';
     }
-    if (lowerInput.includes('date') || lowerInput.includes('today')) {
+    
+    // Date
+    if (lowerInput.match(/\b(date|today|day|month|year)\b/)) {
       return 'date';
     }
-    if (lowerInput.includes('help') || lowerInput.includes('what can you')) {
+    
+    // Help
+    if (lowerInput.match(/\b(help|what can you|capabilities|what do you)\b/)) {
       return 'help';
     }
-    if (lowerInput.includes('bye') || lowerInput.includes('goodbye')) {
+    
+    // Goodbye
+    if (lowerInput.match(/\b(bye|goodbye|see you|farewell|talk later)\b/)) {
       return 'goodbye';
     }
-    if (lowerInput.includes('thank') || lowerInput.includes('great') || lowerInput.includes('good')) {
+    
+    // Compliments/Thanks
+    if (lowerInput.match(/\b(thank|thanks|great|good|awesome|amazing|nice|cool)\b/)) {
       return 'compliment';
     }
-    if (lowerInput.includes('joke') || lowerInput.includes('funny')) {
+    
+    // Jokes
+    if (lowerInput.match(/\b(joke|funny|laugh|humor|amusing)\b/)) {
       return 'joke';
+    }
+    
+    // Name/Identity
+    if (lowerInput.match(/\b(name|who are you|what are you)\b/)) {
+      return 'name';
+    }
+    
+    // Capabilities
+    if (lowerInput.match(/\b(can you|able to|do you know)\b/)) {
+      return 'capabilities';
     }
 
     return 'default';
   }
 
   async generateResponse(userInput: string): Promise<ChatResponse> {
-    // Much faster response - no artificial delay
+    // Simulate a brief processing delay for more natural feel
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     const category = this.categorizeInput(userInput);
     const message = this.getRandomResponse(category);
 
